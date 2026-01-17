@@ -1,5 +1,10 @@
 # 🧹 Data Cleaner Pro
 
+![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![Documentation](https://img.shields.io/badge/docs-complete-blue)
+
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
