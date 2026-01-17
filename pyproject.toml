@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "data-cleaner-pro"
+version = "0.1.0"
+authors = [
+    {name = "nutmegdev96"}
+]
+description = "Professional data cleaning toolkit for everyday use"
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["data-cleaning", "data-preprocessing", "data-analysis", "python"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pandas>=1.5.0",
+    "numpy>=1.21.0",
+    "scipy>=1.9.0",
+    "scikit-learn>=1.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/nutmegdev96/data-cleaner-pro"
+Documentation = "https://github.com/nutmegdev96/data-cleaner-pro#readme"
+Repository = "https://github.com/nutmegdev96/data-cleaner-pro"
+Issues = "https://github.com/nutmegdev96/data-cleaner-pro/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "jupyter>=1.0.0",
+    "ipython>=8.0.0",
+]
+
+notebooks = [
+    "jupyter>=1.0.0",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
+]
