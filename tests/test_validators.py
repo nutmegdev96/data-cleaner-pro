@@ -1,5 +1,5 @@
 """
-Test per il modulo validators.py
+Test module validators.py
 """
 import pytest
 import pandas as pd
@@ -7,7 +7,7 @@ import numpy as np
 from src.validators import DataValidator, EmailValidator
 
 class TestDataValidator:
-    """Test per DataValidator"""
+    """Test DataValidator"""
     
     def test_validate_email_valid(self):
         """Test email valide"""
@@ -22,7 +22,7 @@ class TestDataValidator:
         assert validator.validate("@domain.com") == False
     
     def test_check_missing_values(self):
-        """Test controllo valori mancanti"""
+        """Test check miss values"""
         df = pd.DataFrame({
             'A': [1, 2, np.nan],
             'B': ['a', None, 'c']
@@ -35,7 +35,7 @@ class TestDataValidator:
         assert missing['B'] == 1
     
     def test_validate_numeric_range(self):
-        """Test validazione range numerico"""
+        """Test validation range numeric"""
         validator = DataValidator()
         
         # Dati all'interno del range
@@ -47,7 +47,7 @@ class TestDataValidator:
         assert validator.validate_numeric_range(data, 0, 100) == False
     
     def test_validate_date_format(self):
-        """Test validazione formato data"""
+        """Test validation data format"""
         validator = DataValidator()
         
         valid_dates = ['2023-01-01', '2023/12/31']
@@ -63,7 +63,7 @@ class TestCustomerValidator:
     """Test specifici per validazione clienti e-commerce"""
     
     def test_validate_customer_age(self):
-        """Test età cliente valida"""
+        """Test age client valid"""
         from src.validators import CustomerValidator
         
         validator = CustomerValidator()
@@ -88,7 +88,7 @@ class TestCustomerValidator:
         assert validator.validate_order_amount(1000000) == False  # Troppo alto
     
     def test_validate_country_code(self):
-        """Test codice paese valido"""
+        """Test country code valid"""
         from src.validators import CustomerValidator
         
         validator = CustomerValidator()
