@@ -1,7 +1,7 @@
 """
-Data Cleaner Pro v2.0.0 - Smart Data Cleaning Toolkit
+Data Cleaner Pro v2.0 - Smart Data Cleaning Toolkit
 Author: nutmegdev96
-GitHub: https://github.com/nutmegdev96/Data-Cleaner-PRO-v2.0.0
+GitHub: https://github.com/nutmegdev96/Data-Cleaner-PRO-v1.1
 """
 
 import pandas as pd
@@ -773,20 +773,27 @@ def example_smart_usage():
     - Quality reporting
     - State management
     """
-    from sklearn.datasets import fetch_california_housing
-    
     print("🤖 Smart Data Cleaner Example")
     print("=" * 50)
     
     # Create sample data with issues
-    housing = fetch_california_housing()
-    df = pd.DataFrame(housing.data, columns=housing.feature_names)
-    df['target'] = housing.target
+    data = {
+        'Customer_ID': range(100),
+        'Customer Name': [f'Customer_{i}' for i in range(100)],
+        'age': np.random.randint(18, 80, 100),
+        'income': np.random.normal(50000, 20000, 100),
+        'join_date': pd.date_range('2020-01-01', periods=100, freq='D'),
+        'category': np.random.choice(['A', 'B', 'C', 'D'], 100),
+        'rating': np.random.choice([1, 2, 3, 4, 5], 100),
+        'notes': ['Note ' + str(i) for i in range(100)]
+    }
+    
+    df = pd.DataFrame(data)
     
     # Add some issues
-    df.loc[::100, 'MedInc'] = np.nan  # Add missing values
-    df.loc[10:20, 'HouseAge'] = 999   # Add outliers
-    df.columns = [c.replace(' ', '_').lower() for c in df.columns]
+    df.loc[::10, 'age'] = np.nan  # Add missing values
+    df.loc[5:15, 'income'] = 999999  # Add outliers
+    df.loc[20:30, 'category'] = None  # More missing
     
     # Initialize smart cleaner
     cleaner = SmartDataCleaner(df, strategy='auto', verbose=True)
@@ -810,33 +817,41 @@ def example_smart_usage():
     print(f"📈 Quality improved by: "
           f"{(cleaner.quality_score - 0.8) * 100:.1f}%" if cleaner.quality_score else "N/A")
     
-    # Save state
-    cleaner.save_state('cleaner_state.json')
+    # Show cleaned data sample
+    print("\n📋 Cleaned Data Sample:")
+    print(cleaner.df.head())
     
     print("\n✨ Example complete! Ready for analysis or ML.")
 
 
+# Test the cleaner
 if __name__ == "__main__":
-    # Run example if executed directly
-    import argparse
+    # Test con dati di esempio
+    print("🧪 Testing SmartDataCleaner...")
     
-    parser = argparse.ArgumentParser(description='Smart Data Cleaner Pro')
-    parser.add_argument('--example', action='store_true', help='Run example usage')
-    parser.add_argument('--file', type=str, help='File to clean')
-    parser.add_argument('--strategy', choices=['auto', 'aggressive', 'conservative'], 
-                       default='auto', help='Cleaning strategy')
+    # Crea dati di test
+    test_data = {
+        'User Name': ['Alice Smith', 'BOB JONES', 'charlie brown', None, 'Eve Davis'],
+        'Age': [25, None, 35, 45, 999],
+        'Salary': [50000, 60000, None, 80000, 120000],
+        'Join Date': ['2020-01-15', '2021-03-22', None, '2019-11-30', '2022-12-01'],
+        'Department': ['IT', 'HR', 'IT', 'Sales', 'HR'],
+        'Active': [True, False, True, None, False]
+    }
     
-    args = parser.parse_args()
+    df_test = pd.DataFrame(test_data)
+    print("📊 Test Data:")
+    print(df_test)
+    print("\n" + "=" * 50)
     
-    if args.example:
-        example_smart_usage()
-    elif args.file:
-        cleaner = SmartDataCleaner(strategy=args.strategy, verbose=True)
-        cleaner.load_data(args.file)
-        cleaned_df = cleaner.clean(inplace=False)
-        cleaned_df.to_csv(f'cleaned_{Path(args.file).name}', index=False)
-        print(f"✅ Cleaned data saved to cleaned_{Path(args.file).name}")
-    else:
-        print("Usage:")
-        print("  python cleaner.py --example  # Run example")
-        print("  python cleaner.py --file data.csv --strategy auto  # Clean a file")
+    # Crea e usa il cleaner
+    cleaner = SmartDataCleaner(df_test, verbose=True)
+    
+    # Esegui pulizia
+    cleaned_df = cleaner.clean(inplace=False)
+    
+    print("\n✨ Cleaned Data:")
+    print(cleaned_df)
+    
+    print("\n📈 Quality Score:", cleaner.quality_score)
+    print("✅ Test completato con successo!")
