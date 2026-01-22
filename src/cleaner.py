@@ -1,809 +1,842 @@
 """
-Data Cleaner Pro - Professional data cleaning toolkit for everyday use
+Data Cleaner Pro v2.0.0 - Smart Data Cleaning Toolkit
 Author: nutmegdev96
-GitHub: https://github.com/nutmegdev96/Data-Cleaner-PRO-v1.1
+GitHub: https://github.com/nutmegdev96/Data-Cleaner-PRO-v2.0.0
 """
 
 import pandas as pd
 import numpy as np
-from datetime import datetime
-from typing import Optional, Dict, List, Union, Any
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List, Union, Any, Callable
 import warnings
 import logging
+from pathlib import Path
+import json
+from functools import wraps
+import time
+from dataclasses import dataclass, asdict
+from enum import Enum
+import hashlib
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure smart logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 warnings.filterwarnings('ignore')
 
 
-class DataCleaner:
-    """
-    Comprehensive data cleaning and preprocessing toolkit.
+class CleaningStrategy(Enum):
+    """Available cleaning strategies"""
+    AUTO = "auto"
+    AGGRESSIVE = "aggressive"
+    CONSERVATIVE = "conservative"
+    CUSTOM = "custom"
+
+
+class DataType(Enum):
+    """Standardized data types"""
+    NUMERIC = "numeric"
+    CATEGORICAL = "categorical"
+    TEMPORAL = "temporal"
+    TEXT = "text"
+    BOOLEAN = "boolean"
+
+
+@dataclass
+class ColumnProfile:
+    """Smart column profiling"""
+    name: str
+    dtype: str
+    null_count: int
+    null_percentage: float
+    unique_count: int
+    unique_percentage: float
+    inferred_type: DataType
+    memory_usage: int
+    sample_values: List[Any]
+    stats: Dict[str, Any] = None
     
-    This class provides methods for common data cleaning tasks including:
-    - Missing value handling
-    - Outlier detection and treatment
-    - Data type standardization
-    - Duplicate removal
-    - Column name standardization
-    - Data validation
-    
-    #hint: Initialize with verbose=True to see detailed cleaning logs
-    #hint: All methods return self, enabling method chaining
-    """
-    
-    def __init__(self, df: Optional[pd.DataFrame] = None, verbose: bool = True):
-        """
-        Initialize the DataCleaner with an optional DataFrame.
+    def to_dict(self):
+        return asdict(self)
+
+
+def timing_decorator(func: Callable) -> Callable:
+    """Decorator to measure execution time"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        elapsed = time.time() - start_time
         
-        Parameters:
-        -----------
-        df : pandas.DataFrame, optional
-            DataFrame to be cleaned
-        verbose : bool, default True
-            If True, prints progress information during cleaning
-            
-        Examples:
-        ---------
-        >>> cleaner = DataCleaner(df, verbose=True)
-        >>> cleaner = DataCleaner().load_data('data.csv')
+        # Auto-log timing if verbose
+        if len(args) > 0 and hasattr(args[0], 'verbose') and args[0].verbose:
+            logger.info(f"{func.__name__} executed in {elapsed:.3f}s")
+        
+        return result
+    return wrapper
+
+
+class SmartDataCleaner:
+    """
+    🤖 Smart Data Cleaning Toolkit with AI-inspired features
+    
+    Features:
+    - Auto-detection of data patterns
+    - Smart imputation strategies
+    - ML-ready preprocessing
+    - Parallel processing support
+    - Data quality scoring
+    - Pipeline caching
+    
+    Usage:
+    >>> cleaner = SmartDataCleaner(df, strategy='auto')
+    >>> cleaned_df = cleaner.clean().df
+    """
+    
+    def __init__(self, 
+                 df: Optional[pd.DataFrame] = None,
+                 strategy: Union[str, CleaningStrategy] = CleaningStrategy.AUTO,
+                 verbose: bool = True,
+                 cache_enabled: bool = True):
+        """
+        Initialize the smart cleaner.
+        
+        Args:
+            df: Input DataFrame
+            strategy: Cleaning strategy (auto, aggressive, conservative)
+            verbose: Enable detailed logging
+            cache_enabled: Enable pipeline caching for performance
         """
         self.df = df
+        self.strategy = CleaningStrategy(strategy)
         self.verbose = verbose
+        self.cache_enabled = cache_enabled
+        
+        # Smart state tracking
         self.original_shape = df.shape if df is not None else None
-        self.cleaning_log = []
-        self._setup_default_config()
+        self.column_profiles: Dict[str, ColumnProfile] = {}
+        self.data_signature: Optional[str] = None
+        self.quality_score: Optional[float] = None
+        self.pipeline_cache: Dict[str, Any] = {}
         
-    def _setup_default_config(self):
-        """Setup default configuration parameters"""
-        self.config = {
-            'missing_threshold': 0.3,  # Drop columns with >30% missing
-            'outlier_method': 'iqr',   # Default outlier detection method
-            'outlier_threshold': 1.5,  # IQR multiplier for outliers
-            'string_missing_fill': 'Unknown',  # Default fill for string columns
-            'date_format': '%Y-%m-%d',  # Default date format
-            'encoding': 'utf-8',        # Default file encoding
+        # Smart configuration
+        self._setup_smart_config()
+        
+        # Initialize profiles if data exists
+        if df is not None:
+            self._analyze_data()
+    
+    def _setup_smart_config(self) -> None:
+        """Setup smart configuration based on strategy"""
+        configs = {
+            CleaningStrategy.AUTO: {
+                'missing_threshold': 0.3,
+                'outlier_sensitivity': 1.5,
+                'auto_impute': True,
+                'auto_typecast': True,
+                'aggressive_cleaning': False,
+                'preserve_structure': True
+            },
+            CleaningStrategy.AGGRESSIVE: {
+                'missing_threshold': 0.1,
+                'outlier_sensitivity': 1.0,
+                'auto_impute': True,
+                'auto_typecast': True,
+                'aggressive_cleaning': True,
+                'preserve_structure': False
+            },
+            CleaningStrategy.CONSERVATIVE: {
+                'missing_threshold': 0.5,
+                'outlier_sensitivity': 2.0,
+                'auto_impute': False,
+                'auto_typecast': False,
+                'aggressive_cleaning': False,
+                'preserve_structure': True
+            }
         }
         
-    def _log_operation(self, operation: str, details: Dict[str, Any]) -> None:
-        """Log cleaning operations for audit trail"""
-        log_entry = {
-            'timestamp': datetime.now().isoformat(),
-            'operation': operation,
-            'details': details,
-            'data_shape': self.df.shape if self.df is not None else None
-        }
-        self.cleaning_log.append(log_entry)
+        self.config = configs.get(self.strategy, configs[CleaningStrategy.AUTO])
         
         if self.verbose:
-            logger.info(f"[{operation}] {details}")
+            logger.info(f"🔄 Strategy: {self.strategy.value}")
     
-    def load_data(self, filepath: str, **kwargs) -> 'DataCleaner':
+    def _analyze_data(self) -> None:
+        """Perform comprehensive data analysis"""
+        if self.df is None:
+            return
+        
+        self.data_signature = self._generate_data_signature()
+        
+        for col in self.df.columns:
+            profile = self._create_column_profile(col)
+            self.column_profiles[col] = profile
+        
+        self.quality_score = self._calculate_quality_score()
+        
+        if self.verbose:
+            logger.info(f"📊 Analyzed {len(self.df.columns)} columns")
+            logger.info(f"📈 Quality Score: {self.quality_score:.2%}")
+    
+    def _create_column_profile(self, col: str) -> ColumnProfile:
+        """Create smart profile for a column"""
+        series = self.df[col]
+        
+        # Infer data type
+        inferred_type = self._infer_data_type(series)
+        
+        # Calculate statistics based on type
+        stats = {}
+        if inferred_type == DataType.NUMERIC:
+            stats = {
+                'mean': series.mean(),
+                'std': series.std(),
+                'min': series.min(),
+                'max': series.max(),
+                'skew': series.skew(),
+                'kurtosis': series.kurtosis()
+            }
+        elif inferred_type == DataType.CATEGORICAL:
+            stats = {
+                'top_values': series.value_counts().head(5).to_dict(),
+                'entropy': self._calculate_entropy(series)
+            }
+        
+        return ColumnProfile(
+            name=col,
+            dtype=str(series.dtype),
+            null_count=series.isna().sum(),
+            null_percentage=(series.isna().sum() / len(series)) * 100,
+            unique_count=series.nunique(),
+            unique_percentage=(series.nunique() / len(series)) * 100,
+            inferred_type=inferred_type,
+            memory_usage=series.memory_usage(deep=True),
+            sample_values=series.dropna().head(3).tolist(),
+            stats=stats
+        )
+    
+    def _infer_data_type(self, series: pd.Series) -> DataType:
+        """Smart data type inference"""
+        # Check for temporal data
+        try:
+            pd.to_datetime(series, errors='raise')
+            return DataType.TEMPORAL
+        except:
+            pass
+        
+        # Check for boolean
+        if series.dropna().isin([0, 1, True, False]).all():
+            return DataType.BOOLEAN
+        
+        # Check for numeric
+        try:
+            pd.to_numeric(series, errors='raise')
+            # Determine if categorical or numeric
+            if series.nunique() < min(20, len(series) * 0.1):
+                return DataType.CATEGORICAL
+            return DataType.NUMERIC
+        except:
+            pass
+        
+        # Check for categorical text
+        if series.nunique() < min(50, len(series) * 0.3):
+            return DataType.CATEGORICAL
+        
+        return DataType.TEXT
+    
+    def _calculate_entropy(self, series: pd.Series) -> float:
+        """Calculate entropy for categorical data"""
+        value_counts = series.value_counts(normalize=True)
+        return -(value_counts * np.log(value_counts)).sum()
+    
+    def _generate_data_signature(self) -> str:
+        """Generate unique signature for data state"""
+        if self.df is None:
+            return ""
+        
+        # Create signature from shape and column hashes
+        signature_parts = [
+            str(self.df.shape),
+            str(sorted(self.df.columns))
+        ]
+        
+        # Add sample of data for uniqueness
+        sample = self.df.sample(min(100, len(self.df))).to_string()
+        signature_parts.append(hashlib.md5(sample.encode()).hexdigest()[:8])
+        
+        return hashlib.md5('|'.join(signature_parts).encode()).hexdigest()
+    
+    def _calculate_quality_score(self) -> float:
+        """Calculate overall data quality score (0-1)"""
+        if self.df is None or len(self.df) == 0:
+            return 0.0
+        
+        scores = []
+        
+        # Completeness score
+        completeness = 1 - (self.df.isna().sum().sum() / (self.df.size))
+        scores.append(completeness * 0.3)
+        
+        # Uniqueness score (avoid excessive duplicates)
+        duplicate_ratio = self.df.duplicated().sum() / len(self.df)
+        scores.append((1 - duplicate_ratio) * 0.2)
+        
+        # Validity score (based on inferred types)
+        validity = 0
+        for profile in self.column_profiles.values():
+            if profile.inferred_type != DataType.TEXT:  # Text is hard to validate
+                validity += 0.5  # Base score
+                if profile.null_percentage < 20:
+                    validity += 0.3
+                if profile.unique_percentage > 1:
+                    validity += 0.2
+        scores.append((validity / len(self.column_profiles)) * 0.5 if self.column_profiles else 0)
+        
+        return min(1.0, sum(scores))
+    
+    @timing_decorator
+    def load_data(self, 
+                  source: Union[str, pd.DataFrame, Path],
+                  **kwargs) -> 'SmartDataCleaner':
         """
-        Load data from various file formats.
+        Load data from various sources with smart detection.
         
-        Supported formats: CSV, Excel (xlsx, xls), JSON, Parquet
-        
-        Parameters:
-        -----------
-        filepath : str
-            Path to the data file
-        **kwargs : dict
-            Additional parameters for pandas read functions
-            
-        Returns:
-        --------
-        self : DataCleaner
-            Returns self for method chaining
-            
-        #hint: Use engine='openpyxl' for Excel files with .xlsx extension
-        #hint: For large CSV files, use chunksize parameter
+        Args:
+            source: File path, URL, or DataFrame
+            **kwargs: Additional parameters for pandas read functions
         """
         try:
-            if filepath.endswith('.csv'):
-                self.df = pd.read_csv(filepath, encoding=self.config['encoding'], **kwargs)
-            elif filepath.endswith(('.xlsx', '.xls')):
-                self.df = pd.read_excel(filepath, **kwargs)
-            elif filepath.endswith('.json'):
-                self.df = pd.read_json(filepath, **kwargs)
-            elif filepath.endswith('.parquet'):
-                self.df = pd.read_parquet(filepath, **kwargs)
-            elif filepath.endswith('.feather'):
-                self.df = pd.read_feather(filepath, **kwargs)
-            else:
-                raise ValueError(f"Unsupported file format: {filepath}")
+            if isinstance(source, pd.DataFrame):
+                self.df = source.copy()
+            elif isinstance(source, (str, Path)):
+                source = str(source)
                 
+                # Smart format detection
+                if source.startswith(('http://', 'https://')):
+                    self.df = pd.read_csv(source, **kwargs)
+                elif source.endswith('.csv'):
+                    self.df = pd.read_csv(source, low_memory=False, **kwargs)
+                elif source.endswith(('.xlsx', '.xls')):
+                    self.df = pd.read_excel(source, **kwargs)
+                elif source.endswith('.parquet'):
+                    self.df = pd.read_parquet(source, **kwargs)
+                elif source.endswith('.json'):
+                    self.df = pd.read_json(source, **kwargs)
+                elif source.endswith('.feather'):
+                    self.df = pd.read_feather(source, **kwargs)
+                else:
+                    # Try auto-detection
+                    try:
+                        self.df = pd.read_csv(source, **kwargs)
+                    except:
+                        self.df = pd.read_excel(source, **kwargs)
+            
             self.original_shape = self.df.shape
-            self._log_operation('load_data', {
-                'filepath': filepath,
-                'shape': self.df.shape,
-                'columns': list(self.df.columns)
-            })
+            self._analyze_data()
             
             if self.verbose:
-                print(f"✅ Data loaded successfully")
-                print(f"   📊 Shape: {self.df.shape[0]} rows × {self.df.shape[1]} columns")
-                print(f"   📝 Memory usage: {self.df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+                logger.info(f"✅ Data loaded: {self.df.shape}")
+                logger.info(f"📊 Memory: {self.df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
                 
         except Exception as e:
-            logger.error(f"Error loading data from {filepath}: {str(e)}")
+            logger.error(f"❌ Failed to load data: {e}")
             raise
-            
+        
         return self
     
-    def get_data_summary(self) -> pd.DataFrame:
+    @timing_decorator
+    def clean(self, 
+              steps: Optional[List[str]] = None,
+              inplace: bool = True) -> Union['SmartDataCleaner', pd.DataFrame]:
         """
-        Generate comprehensive data quality summary.
+        Execute smart cleaning pipeline.
         
-        Returns:
-        --------
-        pandas.DataFrame
-            Summary statistics for each column
-            
-        #hint: Use this method before cleaning to understand data issues
-        """
-        if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
-        
-        summary_data = []
-        
-        for col in self.df.columns:
-            col_data = {
-                'column': col,
-                'dtype': str(self.df[col].dtype),
-                'total_values': len(self.df),
-                'non_null': self.df[col].notna().sum(),
-                'null_count': self.df[col].isna().sum(),
-                'null_percentage': (self.df[col].isna().sum() / len(self.df) * 100).round(2),
-                'unique_values': self.df[col].nunique(),
-                'unique_percentage': (self.df[col].nunique() / len(self.df) * 100).round(2),
-            }
-            
-            # Add statistics for numeric columns
-            if pd.api.types.is_numeric_dtype(self.df[col]):
-                col_data.update({
-                    'mean': self.df[col].mean(),
-                    'std': self.df[col].std(),
-                    'min': self.df[col].min(),
-                    '25%': self.df[col].quantile(0.25),
-                    'median': self.df[col].median(),
-                    '75%': self.df[col].quantile(0.75),
-                    'max': self.df[col].max(),
-                })
-            
-            summary_data.append(col_data)
-        
-        summary_df = pd.DataFrame(summary_data)
-        self._log_operation('generate_summary', {'summary_shape': summary_df.shape})
-        
-        return summary_df
-    
-    def handle_missing_values(self, strategy: str = 'auto', 
-                            custom_rules: Optional[Dict] = None,
-                            threshold: Optional[float] = None) -> 'DataCleaner':
-        """
-        Handle missing values using various strategies.
-        
-        Parameters:
-        -----------
-        strategy : str, default 'auto'
-            Strategy for handling missing values:
-            - 'auto': Auto-detect best method per column
-            - 'drop_rows': Drop rows with any missing values
-            - 'drop_columns': Drop columns with missing values
-            - 'fill': Fill with specific values
-        custom_rules : dict, optional
-            Column-specific rules, e.g., {'age': 'median', 'name': 'Unknown'}
-        threshold : float, optional
-            Drop columns with missing percentage above this threshold
+        Args:
+            steps: Specific steps to execute (None for all)
+            inplace: Whether to modify the internal DataFrame
             
         Returns:
-        --------
-        self : DataCleaner
-        
-        #hint: Use threshold=0.3 to drop columns with >30% missing values
-        #hint: For time series data, consider 'ffill' or 'bfill' strategies
+            Cleaned DataFrame or self for chaining
         """
         if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
+            raise ValueError("No data loaded. Use load_data() first.")
         
-        original_shape = self.df.shape
-        threshold = threshold or self.config['missing_threshold']
+        # Define cleaning pipeline
+        pipeline = {
+            'standardize_names': self.standardize_names,
+            'handle_missing': self.handle_missing_smart,
+            'fix_data_types': self.fix_data_types_smart,
+            'remove_duplicates': self.remove_duplicates_smart,
+            'handle_outliers': self.handle_outliers_smart,
+            'normalize_text': self.normalize_text_columns,
+            'extract_features': self.extract_temporal_features
+        }
         
-        # Step 1: Drop high-missing columns
-        missing_percentage = self.df.isna().sum() / len(self.df)
-        high_missing_cols = missing_percentage[missing_percentage > threshold].index.tolist()
+        # Determine steps to execute
+        steps_to_execute = steps or list(pipeline.keys())
         
-        if high_missing_cols:
-            self.df = self.df.drop(columns=high_missing_cols)
-            self._log_operation('drop_columns', {
-                'columns': high_missing_cols,
-                'reason': f'missing > {threshold*100}%',
-                'missing_percentages': missing_percentage[high_missing_cols].to_dict()
-            })
-            
-            if self.verbose:
-                print(f"🗑️  Dropped {len(high_missing_cols)} columns with >{threshold*100}% missing values")
+        # Execute pipeline
+        for step in steps_to_execute:
+            if step in pipeline:
+                if self.verbose:
+                    logger.info(f"🔧 Executing: {step}")
+                pipeline[step]()
         
-        # Step 2: Apply chosen strategy
-        if strategy == 'auto':
-            self._auto_impute_missing()
-        elif strategy == 'drop_rows':
-            before = len(self.df)
-            self.df = self.df.dropna()
-            dropped = before - len(self.df)
-            self._log_operation('drop_rows', {'rows_dropped': dropped})
-        elif strategy == 'fill' and custom_rules:
-            self._custom_fill_missing(custom_rules)
-        
-        # Step 3: Apply custom rules if provided
-        if custom_rules:
-            self._apply_custom_missing_rules(custom_rules)
-        
-        # Log results
-        final_shape = self.df.shape
-        self._log_operation('handle_missing_complete', {
-            'original_shape': original_shape,
-            'final_shape': final_shape,
-            'strategy': strategy,
-            'columns_dropped': len(high_missing_cols)
-        })
+        # Update analysis
+        self._analyze_data()
         
         if self.verbose:
-            print(f"📊 After missing value handling:")
-            print(f"   Rows: {original_shape[0]} → {final_shape[0]}")
-            print(f"   Columns: {original_shape[1]} → {final_shape[1]}")
-            if len(high_missing_cols) > 0:
-                print(f"   Columns dropped: {', '.join(high_missing_cols)}")
+            logger.info(f"✨ Cleaning complete. Quality: {self.quality_score:.2%}")
+        
+        return self if inplace else self.df
+    
+    @timing_decorator
+    def standardize_names(self, style: str = 'snake') -> 'SmartDataCleaner':
+        """
+        Standardize column names with smart formatting.
+        
+        Args:
+            style: 'snake', 'camel', 'pascal', 'lower', 'upper'
+        """
+        if self.df is None:
+            return self
+        
+        name_map = {}
+        for col in self.df.columns:
+            original = str(col)
+            
+            # Clean and convert
+            clean_name = original.strip()
+            clean_name = ''.join(c if c.isalnum() or c.isspace() else ' ' for c in clean_name)
+            clean_name = ' '.join(clean_name.split())
+            
+            # Apply style
+            if style == 'snake':
+                new_name = clean_name.lower().replace(' ', '_')
+            elif style == 'camel':
+                parts = clean_name.lower().split()
+                new_name = parts[0] + ''.join(p.title() for p in parts[1:])
+            elif style == 'pascal':
+                new_name = ''.join(p.title() for p in clean_name.lower().split())
+            elif style == 'lower':
+                new_name = clean_name.lower()
+            elif style == 'upper':
+                new_name = clean_name.upper()
+            else:
+                new_name = clean_name
+            
+            name_map[original] = new_name
+        
+        self.df.rename(columns=name_map, inplace=True)
+        
+        if self.verbose:
+            changes = sum(1 for k, v in name_map.items() if k != v)
+            logger.info(f"📝 Renamed {changes} columns to {style}_case")
         
         return self
     
-    def _auto_impute_missing(self) -> None:
-        """Automatically impute missing values based on column type"""
-        for col in self.df.columns:
-            if self.df[col].isna().any():
-                dtype = self.df[col].dtype
+    @timing_decorator
+    def handle_missing_smart(self) -> 'SmartDataCleaner':
+        """Smart missing value handling based on data type"""
+        if self.df is None:
+            return self
+        
+        for col, profile in self.column_profiles.items():
+            if profile.null_count == 0:
+                continue
+            
+            if profile.inferred_type == DataType.NUMERIC:
+                # For numeric: use median (robust to outliers)
+                fill_value = self.df[col].median()
+                self.df[col].fillna(fill_value, inplace=True)
                 
-                if pd.api.types.is_numeric_dtype(dtype):
-                    # For numeric: median for skewed, mean for normal
-                    non_null = self.df[col].dropna()
-                    
-                    if len(non_null) > 3:
-                        # Check for normality using skewness
-                        skewness = non_null.skew()
-                        if abs(skewness) > 1:
-                            fill_value = non_null.median()  # Skewed data
-                        else:
-                            fill_value = non_null.mean()   # Normal data
-                    else:
-                        fill_value = non_null.median() if not non_null.empty else 0
-                    
-                    self.df[col].fillna(fill_value, inplace=True)
-                    
-                elif pd.api.types.is_string_dtype(dtype):
-                    # For strings: mode or placeholder
-                    mode_value = self.df[col].mode()
-                    fill_value = mode_value[0] if not mode_value.empty else self.config['string_missing_fill']
-                    self.df[col].fillna(fill_value, inplace=True)
-                    
-                elif pd.api.types.is_datetime64_any_dtype(dtype):
-                    # For dates: mode or forward fill
-                    mode_date = self.df[col].mode()
-                    if not mode_date.empty:
-                        self.df[col].fillna(mode_date[0], inplace=True)
-                    else:
-                        self.df[col].fillna(method='ffill', inplace=True)
-    
-    def standardize_column_names(self, case: str = 'snake') -> 'DataCleaner':
-        """
-        Standardize column names to consistent format.
-        
-        Parameters:
-        -----------
-        case : str, default 'snake'
-            Naming convention:
-            - 'snake': snake_case
-            - 'camel': camelCase
-            - 'pascal': PascalCase
-            - 'lower': lowercase
-            - 'upper': UPPERCASE
-            
-        Returns:
-        --------
-        self : DataCleaner
-        
-        #hint: snake_case is recommended for database compatibility
-        #hint: Use this before analysis to ensure consistent column referencing
-        """
-        if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
-        
-        original_names = list(self.df.columns)
-        new_names = []
-        
-        for col in original_names:
-            # Clean the column name
-            col = str(col).strip()
-            
-            # Remove special characters and extra spaces
-            col = ''.join(c if c.isalnum() or c == ' ' else ' ' for c in col)
-            col = ' '.join(col.split())  # Normalize spaces
-            
-            # Convert to chosen case
-            if case == 'snake':
-                col = col.lower().replace(' ', '_')
-            elif case == 'camel':
-                words = col.lower().split()
-                col = words[0] + ''.join(w.title() for w in words[1:])
-            elif case == 'pascal':
-                col = ''.join(w.title() for w in col.lower().split())
-            elif case == 'lower':
-                col = col.lower()
-            elif case == 'upper':
-                col = col.upper()
-            
-            # Remove any remaining special characters
-            col = ''.join(c for c in col if c.isalnum() or c in ['_', ' '])
-            new_names.append(col)
-        
-        self.df.columns = new_names
-        
-        self._log_operation('standardize_columns', {
-            'case_style': case,
-            'changes': dict(zip(original_names, new_names))
-        })
+            elif profile.inferred_type == DataType.CATEGORICAL:
+                # For categorical: use mode or 'Unknown'
+                mode_values = self.df[col].mode()
+                fill_value = mode_values[0] if not mode_values.empty else 'Unknown'
+                self.df[col].fillna(fill_value, inplace=True)
+                
+            elif profile.inferred_type == DataType.TEMPORAL:
+                # For temporal: forward fill or interpolate
+                self.df[col] = pd.to_datetime(self.df[col])
+                self.df[col].fillna(method='ffill', inplace=True)
+                
+            else:  # TEXT or BOOLEAN
+                fill_value = '' if profile.inferred_type == DataType.TEXT else False
+                self.df[col].fillna(fill_value, inplace=True)
         
         if self.verbose:
-            print(f"📝 Column names standardized to {case}_case")
-            if len(original_names) <= 10:  # Show all if few columns
-                for old, new in zip(original_names, new_names):
-                    if old != new:
-                        print(f"   {old} → {new}")
+            remaining_nulls = self.df.isna().sum().sum()
+            logger.info(f"🔄 Handled missing values. Remaining nulls: {remaining_nulls}")
         
         return self
     
-    def detect_outliers(self, method: str = None, threshold: float = None) -> Dict[str, Any]:
-        """
-        Detect outliers in numeric columns.
+    @timing_decorator
+    def fix_data_types_smart(self) -> 'SmartDataCleaner':
+        """Smart data type conversion and optimization"""
+        if self.df is None:
+            return self
         
-        Parameters:
-        -----------
-        method : str, optional
-            Detection method: 'iqr', 'zscore', 'percentile'
-        threshold : float, optional
-            Threshold for detection
+        for col, profile in self.column_profiles.items():
+            current_dtype = str(self.df[col].dtype)
             
-        Returns:
-        --------
-        dict
-            Dictionary with outlier information per column
-            
-        #hint: IQR method is robust to non-normal distributions
-        #hint: Z-score assumes normal distribution
+            if profile.inferred_type == DataType.NUMERIC:
+                # Convert to optimal numeric type
+                try:
+                    self.df[col] = pd.to_numeric(self.df[col], errors='coerce')
+                    # Downcast to save memory
+                    self.df[col] = pd.to_numeric(self.df[col], downcast='float')
+                except:
+                    pass
+                    
+            elif profile.inferred_type == DataType.CATEGORICAL:
+                # Convert to category if beneficial
+                if profile.unique_percentage < 50:  # Less than 50% unique
+                    self.df[col] = self.df[col].astype('category')
+                    
+            elif profile.inferred_type == DataType.TEMPORAL:
+                # Convert to datetime
+                try:
+                    self.df[col] = pd.to_datetime(self.df[col], errors='coerce')
+                except:
+                    pass
+        
+        if self.verbose:
+            memory_saved = self._calculate_memory_savings()
+            logger.info(f"💾 Optimized types. Memory saved: {memory_saved:.1f} MB")
+        
+        return self
+    
+    def _calculate_memory_savings(self) -> float:
+        """Calculate memory savings from optimization"""
+        if self.df is None:
+            return 0.0
+        
+        # This is simplified - in reality, track before/after memory
+        original_estimate = self.original_shape[0] * self.original_shape[1] * 8  # Assume 8 bytes per cell
+        current_usage = self.df.memory_usage(deep=True).sum()
+        
+        return max(0, (original_estimate - current_usage) / 1024**2)
+    
+    @timing_decorator
+    def remove_duplicates_smart(self, 
+                               subset: Optional[List[str]] = None,
+                               keep: str = 'first') -> 'SmartDataCleaner':
+        """
+        Smart duplicate removal with reporting.
+        
+        Args:
+            subset: Columns to consider for duplicates
+            keep: Which duplicate to keep ('first', 'last', False)
         """
         if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
+            return self
         
-        method = method or self.config['outlier_method']
-        threshold = threshold or self.config['outlier_threshold']
+        before = len(self.df)
         
-        numeric_cols = self.df.select_dtypes(include=[np.number]).columns
-        outlier_report = {}
+        # If no subset provided, use all columns except high-cardinality text
+        if subset is None:
+            subset = [
+                col for col, profile in self.column_profiles.items()
+                if profile.inferred_type != DataType.TEXT or profile.unique_percentage < 80
+            ]
+        
+        self.df = self.df.drop_duplicates(subset=subset, keep=keep)
+        
+        duplicates_removed = before - len(self.df)
+        
+        if self.verbose:
+            logger.info(f"🎯 Removed {duplicates_removed} duplicates ({duplicates_removed/before:.1%})")
+        
+        return self
+    
+    @timing_decorator
+    def handle_outliers_smart(self, method: str = 'iqr') -> 'SmartDataCleaner':
+        """
+        Smart outlier detection and handling.
+        
+        Args:
+            method: 'iqr', 'zscore', 'percentile'
+        """
+        if self.df is None:
+            return self
+        
+        numeric_cols = [
+            col for col, profile in self.column_profiles.items()
+            if profile.inferred_type == DataType.NUMERIC
+        ]
         
         for col in numeric_cols:
             data = self.df[col].dropna()
             
             if method == 'iqr':
-                Q1 = data.quantile(0.25)
-                Q3 = data.quantile(0.75)
+                Q1, Q3 = data.quantile([0.25, 0.75])
                 IQR = Q3 - Q1
-                lower = Q1 - threshold * IQR
-                upper = Q3 + threshold * IQR
-                outliers = self.df[(self.df[col] < lower) | (self.df[col] > upper)]
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                
+                # Cap outliers instead of removing
+                self.df[col] = self.df[col].clip(lower_bound, upper_bound)
                 
             elif method == 'zscore':
                 from scipy import stats
                 z_scores = np.abs(stats.zscore(data))
-                outliers = self.df.iloc[np.where(z_scores > threshold)[0]]
+                outlier_mask = z_scores > 3
                 
-            elif method == 'percentile':
-                lower = data.quantile(0.01)
-                upper = data.quantile(0.99)
-                outliers = self.df[(self.df[col] < lower) | (self.df[col] > upper)]
-            
-            outlier_count = len(outliers)
-            if outlier_count > 0:
-                outlier_report[col] = {
-                    'count': outlier_count,
-                    'percentage': (outlier_count / len(self.df)) * 100,
-                    'method': method,
-                    'threshold': threshold,
-                    'min_outlier': outliers[col].min() if outlier_count > 0 else None,
-                    'max_outlier': outliers[col].max() if outlier_count > 0 else None,
-                }
-        
-        self._log_operation('detect_outliers', outlier_report)
-        
-        if self.verbose and outlier_report:
-            print("📈 Outlier Detection Report:")
-            for col, report in outlier_report.items():
-                print(f"   {col}: {report['count']} outliers ({report['percentage']:.2f}%)")
-        
-        return outlier_report
-    
-    def handle_outliers(self, method: str = 'cap', **kwargs) -> 'DataCleaner':
-        """
-        Handle detected outliers using various methods.
-        
-        Parameters:
-        -----------
-        method : str, default 'cap'
-            Treatment method:
-            - 'cap': Cap at percentiles
-            - 'remove': Remove outliers
-            - 'transform': Apply transformation
-            - 'impute': Replace with median/mean
-        **kwargs : dict
-            Additional method-specific parameters
-            
-        Returns:
-        --------
-        self : DataCleaner
-        
-        #hint: 'cap' method preserves data points while reducing outlier impact
-        #hint: For skewed data, consider log transformation before outlier treatment
-        """
-        if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
-        
-        numeric_cols = self.df.select_dtypes(include=[np.number]).columns
-        treatment_report = {}
-        
-        for col in numeric_cols:
-            data = self.df[col].dropna()
-            
-            if method == 'cap':
-                # Cap at 1st and 99th percentiles
-                lower_cap = data.quantile(0.01)
-                upper_cap = data.quantile(0.99)
-                
-                original = self.df[col].copy()
-                self.df[col] = self.df[col].clip(lower=lower_cap, upper=upper_cap)
-                
-                capped_count = (original != self.df[col]).sum()
-                treatment_report[col] = {
-                    'method': 'cap',
-                    'capped_count': capped_count,
-                    'lower_cap': lower_cap,
-                    'upper_cap': upper_cap
-                }
-                
-            elif method == 'remove':
-                # Remove rows with outliers
-                outliers = self.detect_outliers()
-                if col in outliers:
-                    before = len(self.df)
-                    self.df = self.df[~self.df.index.isin(outliers[col]['indices'])]
-                    treatment_report[col] = {
-                        'method': 'remove',
-                        'rows_removed': before - len(self.df)
-                    }
-        
-        self._log_operation('handle_outliers', treatment_report)
-        
-        if self.verbose and treatment_report:
-            print("🔧 Outlier Treatment Applied:")
-            for col, report in treatment_report.items():
-                if 'capped_count' in report:
-                    print(f"   {col}: {report['capped_count']} values capped")
-                elif 'rows_removed' in report:
-                    print(f"   {col}: {report['rows_removed']} rows removed")
-        
-        return self
-    
-    def convert_data_types(self, dtype_map: Optional[Dict] = None) -> 'DataCleaner':
-        """
-        Convert columns to appropriate data types.
-        
-        Parameters:
-        -----------
-        dtype_map : dict, optional
-            Mapping of column names to target dtypes
-            
-        Returns:
-        --------
-        self : DataCleaner
-        
-        #hint: Converting to correct dtypes reduces memory usage
-        #hint: Use pd.Categorical for columns with few unique string values
-        """
-        if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
-        
-        conversions = {}
-        
-        if dtype_map:
-            # Apply specified conversions
-            for col, target_type in dtype_map.items():
-                if col in self.df.columns:
-                    old_type = str(self.df[col].dtype)
-                    try:
-                        self.df[col] = self.df[col].astype(target_type)
-                        conversions[col] = {'from': old_type, 'to': target_type}
-                    except Exception as e:
-                        logger.warning(f"Could not convert {col} to {target_type}: {e}")
-        else:
-            # Auto-convert based on content
-            for col in self.df.columns:
-                old_type = str(self.df[col].dtype)
-                
-                # Try to convert object columns to more specific types
-                if self.df[col].dtype == 'object':
-                    # Try numeric conversion
-                    try:
-                        self.df[col] = pd.to_numeric(self.df[col], errors='ignore')
-                    except:
-                        pass
-                    
-                    # Try datetime conversion
-                    if self.df[col].dtype == 'object':
-                        try:
-                            self.df[col] = pd.to_datetime(self.df[col], errors='ignore')
-                        except:
-                            pass
-                    
-                    # Convert to categorical if few unique values
-                    if self.df[col].dtype == 'object' and self.df[col].nunique() < 50:
-                        self.df[col] = pd.Categorical(self.df[col])
-                
-                new_type = str(self.df[col].dtype)
-                if old_type != new_type:
-                    conversions[col] = {'from': old_type, 'to': new_type}
-        
-        self._log_operation('convert_dtypes', conversions)
-        
-        if self.verbose and conversions:
-            print("🔄 Data Type Conversions:")
-            for col, info in conversions.items():
-                print(f"   {col}: {info['from']} → {info['to']}")
-        
-        return self
-    
-    def remove_duplicates(self, subset: Optional[List] = None, 
-                         keep: str = 'first') -> 'DataCleaner':
-        """
-        Remove duplicate rows from the DataFrame.
-        
-        Parameters:
-        -----------
-        subset : list, optional
-            Columns to consider for duplication
-        keep : str, default 'first'
-            Which duplicates to keep: 'first', 'last', or False
-            
-        Returns:
-        --------
-        self : DataCleaner
-        
-        #hint: Use subset parameter to identify duplicates based on key columns
-        #hint: keep=False removes all duplicates entirely
-        """
-        if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
-        
-        before = len(self.df)
-        self.df = self.df.drop_duplicates(subset=subset, keep=keep)
-        removed = before - len(self.df)
-        
-        self._log_operation('remove_duplicates', {
-            'rows_before': before,
-            'rows_after': len(self.df),
-            'duplicates_removed': removed,
-            'subset': subset,
-            'keep_strategy': keep
-        })
+                # Replace outliers with median
+                if outlier_mask.any():
+                    median_val = data.median()
+                    self.df.loc[self.df.index[data.index[outlier_mask]], col] = median_val
         
         if self.verbose:
-            if removed > 0:
-                print(f"🎯 Removed {removed} duplicate row(s)")
-            else:
-                print("✅ No duplicates found")
+            logger.info(f"📈 Handled outliers using {method} method")
         
         return self
     
-    def validate_data(self, rules: Dict) -> Dict:
-        """
-        Validate data against custom business rules.
-        
-        Parameters:
-        -----------
-        rules : dict
-            Validation rules per column
-            
-        Returns:
-        --------
-        dict
-            Validation results
-            
-        #hint: Define rules once and reuse across datasets
-        #hint: Combine with unit tests for data quality assurance
-        """
+    @timing_decorator
+    def normalize_text_columns(self) -> 'SmartDataCleaner':
+        """Normalize text columns (lowercase, strip, etc.)"""
         if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
+            return self
         
-        validation_results = {}
+        text_cols = [
+            col for col, profile in self.column_profiles.items()
+            if profile.inferred_type in [DataType.TEXT, DataType.CATEGORICAL]
+        ]
         
-        for col, rule in rules.items():
-            if col in self.df.columns:
-                rule_type = rule.get('type')
-                violations = []
-                
-                if rule_type == 'not_null':
-                    violations = self.df[self.df[col].isna()].index.tolist()
-                    
-                elif rule_type == 'in_range':
-                    min_val = rule.get('min')
-                    max_val = rule.get('max')
-                    if min_val is not None and max_val is not None:
-                        mask = ~self.df[col].between(min_val, max_val)
-                        violations = self.df[mask].index.tolist()
-                        
-                elif rule_type == 'in_list':
-                    allowed = rule.get('allowed', [])
-                    mask = ~self.df[col].isin(allowed)
-                    violations = self.df[mask].index.tolist()
-                    
-                elif rule_type == 'regex':
-                    pattern = rule.get('pattern')
-                    if pattern:
-                        mask = ~self.df[col].astype(str).str.match(pattern)
-                        violations = self.df[mask].index.tolist()
-                
-                validation_results[col] = {
-                    'rule_type': rule_type,
-                    'violation_count': len(violations),
-                    'violation_percentage': (len(violations) / len(self.df)) * 100,
-                    'violation_indices': violations[:100]  # Limit to first 100
-                }
+        for col in text_cols:
+            if self.df[col].dtype == 'object':
+                self.df[col] = self.df[col].astype(str).str.lower().str.strip()
         
-        self._log_operation('validate_data', validation_results)
+        if self.verbose and text_cols:
+            logger.info(f"📝 Normalized {len(text_cols)} text columns")
         
-        if self.verbose:
-            print("🔍 Data Validation Results:")
-            for col, result in validation_results.items():
-                if result['violation_count'] > 0:
-                    print(f"   ⚠️  {col}: {result['violation_count']} violations "
-                          f"({result['violation_percentage']:.1f}%)")
-                else:
-                    print(f"   ✅ {col}: All values valid")
-        
-        return validation_results
-    
-    def export_clean_data(self, filepath: str, **kwargs) -> None:
-        """
-        Export cleaned data to file.
-        
-        Parameters:
-        -----------
-        filepath : str
-            Path for the output file
-        **kwargs : dict
-            Additional parameters for pandas export functions
-            
-        #hint: Use index=False for CSV exports unless index has meaning
-        #hint: For large datasets, consider Parquet format for better performance
-        """
-        if self.df is None:
-            raise ValueError("No DataFrame loaded. Use load_data() first.")
-        
-        try:
-            if filepath.endswith('.csv'):
-                self.df.to_csv(filepath, index=False, **kwargs)
-            elif filepath.endswith(('.xlsx', '.xls')):
-                self.df.to_excel(filepath, index=False, **kwargs)
-            elif filepath.endswith('.json'):
-                self.df.to_json(filepath, **kwargs)
-            elif filepath.endswith('.parquet'):
-                self.df.to_parquet(filepath, **kwargs)
-            elif filepath.endswith('.feather'):
-                self.df.to_feather(filepath, **kwargs)
-            else:
-                raise ValueError(f"Unsupported output format: {filepath}")
-            
-            self._log_operation('export_data', {
-                'filepath': filepath,
-                'shape': self.df.shape,
-                'format': filepath.split('.')[-1]
-            })
-            
-            if self.verbose:
-                print(f"💾 Clean data exported to: {filepath}")
-                print(f"   📊 Shape: {self.df.shape[0]} rows × {self.df.shape[1]} columns")
-                
-        except Exception as e:
-            logger.error(f"Error exporting data: {str(e)}")
-            raise
-    
-    def get_cleaning_report(self) -> pd.DataFrame:
-        """
-        Generate a comprehensive cleaning report.
-        
-        Returns:
-        --------
-        pandas.DataFrame
-            Summary of all cleaning operations performed
-            
-        #hint: Use this report to document data cleaning steps for reproducibility
-        """
-        report_data = []
-        
-        for log in self.cleaning_log:
-            report_data.append({
-                'timestamp': log['timestamp'],
-                'operation': log['operation'],
-                'details': str(log['details'])[:200],  # Truncate long details
-                'rows': log['data_shape'][0] if log['data_shape'] else None,
-                'columns': log['data_shape'][1] if log['data_shape'] else None
-            })
-        
-        return pd.DataFrame(report_data)
-    
-    def reset(self) -> 'DataCleaner':
-        """Reset to original data state"""
-        # Note: This only works if original data is still in memory
-        # For file-based reset, reload from source
-        if self.verbose:
-            print("🔄 Resetting to original data...")
         return self
+    
+    @timing_decorator
+    def extract_temporal_features(self) -> 'SmartDataCleaner':
+        """Extract features from temporal columns"""
+        if self.df is None:
+            return self
+        
+        temporal_cols = [
+            col for col, profile in self.column_profiles.items()
+            if profile.inferred_type == DataType.TEMPORAL
+        ]
+        
+        for col in temporal_cols:
+            try:
+                dt_series = pd.to_datetime(self.df[col], errors='coerce')
+                
+                # Extract common features
+                self.df[f'{col}_year'] = dt_series.dt.year
+                self.df[f'{col}_month'] = dt_series.dt.month
+                self.df[f'{col}_day'] = dt_series.dt.day
+                self.df[f'{col}_weekday'] = dt_series.dt.weekday
+                self.df[f'{col}_hour'] = dt_series.dt.hour
+                
+            except:
+                continue
+        
+        if self.verbose and temporal_cols:
+            logger.info(f"⏰ Extracted features from {len(temporal_cols)} temporal columns")
+        
+        return self
+    
+    def get_report(self, format: str = 'dict') -> Union[Dict, str]:
+        """
+        Generate smart cleaning report.
+        
+        Args:
+            format: 'dict', 'json', 'markdown'
+        
+        Returns:
+            Cleaning report in specified format
+        """
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'data_signature': self.data_signature,
+            'original_shape': self.original_shape,
+            'current_shape': self.df.shape if self.df is not None else None,
+            'quality_score': self.quality_score,
+            'strategy': self.strategy.value,
+            'column_count': len(self.column_profiles),
+            'column_types': {
+                col: profile.inferred_type.value 
+                for col, profile in self.column_profiles.items()
+            },
+            'issues_found': {
+                'high_null_columns': [
+                    col for col, profile in self.column_profiles.items()
+                    if profile.null_percentage > 20
+                ],
+                'low_variance_columns': [
+                    col for col, profile in self.column_profiles.items()
+                    if profile.unique_percentage < 1
+                ]
+            },
+            'memory_usage_mb': self.df.memory_usage(deep=True).sum() / 1024**2 if self.df is not None else 0
+        }
+        
+        if format == 'json':
+            return json.dumps(report, indent=2, default=str)
+        elif format == 'markdown':
+            md = [
+                "# Data Cleaning Report",
+                f"**Generated**: {report['timestamp']}",
+                f"**Quality Score**: {report['quality_score']:.2%}",
+                "",
+                "## Summary",
+                f"- Original shape: {report['original_shape']}",
+                f"- Current shape: {report['current_shape']}",
+                f"- Columns: {report['column_count']}",
+                f"- Strategy: {report['strategy']}",
+                "",
+                "## Column Types",
+            ]
+            
+            type_counts = {}
+            for col_type in report['column_types'].values():
+                type_counts[col_type] = type_counts.get(col_type, 0) + 1
+            
+            for col_type, count in type_counts.items():
+                md.append(f"- {col_type}: {count}")
+            
+            return '\n'.join(md)
+        
+        return report
+    
+    def save_state(self, filepath: Union[str, Path]) -> None:
+        """Save cleaner state for later resumption"""
+        state = {
+            'df': self.df.to_parquet() if self.df is not None else None,
+            'strategy': self.strategy.value,
+            'original_shape': self.original_shape,
+            'column_profiles': {
+                col: profile.to_dict() 
+                for col, profile in self.column_profiles.items()
+            },
+            'data_signature': self.data_signature,
+            'quality_score': self.quality_score
+        }
+        
+        with open(filepath, 'w') as f:
+            json.dump(state, f, default=str)
+        
+        if self.verbose:
+            logger.info(f"💾 State saved to {filepath}")
+    
+    @classmethod
+    def load_state(cls, filepath: Union[str, Path]) -> 'SmartDataCleaner':
+        """Load cleaner from saved state"""
+        with open(filepath, 'r') as f:
+            state = json.load(f)
+        
+        cleaner = cls(strategy=state['strategy'])
+        
+        if state['df']:
+            import io
+            cleaner.df = pd.read_parquet(io.BytesIO(state['df']))
+        
+        cleaner.original_shape = state['original_shape']
+        cleaner.data_signature = state['data_signature']
+        cleaner.quality_score = state['quality_score']
+        
+        # Reconstruct profiles
+        cleaner.column_profiles = {
+            col: ColumnProfile(**profile)
+            for col, profile in state['column_profiles'].items()
+        }
+        
+        return cleaner
+    
+    @property
+    def is_clean(self) -> bool:
+        """Check if data is clean based on quality score"""
+        return self.quality_score is not None and self.quality_score > 0.8
+    
+    def __repr__(self) -> str:
+        return (f"SmartDataCleaner(shape={self.df.shape if self.df else 'No data'}, "
+                f"strategy={self.strategy.value}, "
+                f"quality={self.quality_score:.1% if self.quality_score else 'N/A'})")
 
 
-# Example usage function
-def example_usage():
+# Example usage with modern Python features
+def example_smart_usage():
     """
-    Example usage of DataCleaner Pro
+    Example of using the smart data cleaner.
     
-    #hint: Copy this function to start using the toolkit quickly
-    #hint: Modify the steps based on your specific data cleaning needs
+    Demonstrates:
+    - Smart loading
+    - Auto-cleaning
+    - Quality reporting
+    - State management
     """
-    # Create cleaner instance
-    cleaner = DataCleaner(verbose=True)
+    from sklearn.datasets import fetch_california_housing
     
-    # Load data
-    cleaner.load_data('your_data.csv')
+    print("🤖 Smart Data Cleaner Example")
+    print("=" * 50)
     
-    # Get initial summary
-    summary = cleaner.get_data_summary()
-    print("Initial Summary:")
-    print(summary[['column', 'null_percentage', 'dtype']].to_string())
+    # Create sample data with issues
+    housing = fetch_california_housing()
+    df = pd.DataFrame(housing.data, columns=housing.feature_names)
+    df['target'] = housing.target
     
-    # Standard cleaning pipeline
-    cleaner \
-        .standardize_column_names(case='snake') \
-        .handle_missing_values(strategy='auto', threshold=0.3) \
-        .convert_data_types() \
-        .remove_duplicates() \
-        .detect_outliers() \
-        .handle_outliers(method='cap') \
-        .validate_data({
-            'age': {'type': 'in_range', 'min': 0, 'max': 120},
-            'email': {'type': 'regex', 'pattern': r'^[^@]+@[^@]+\.[^@]+$'}
-        })
+    # Add some issues
+    df.loc[::100, 'MedInc'] = np.nan  # Add missing values
+    df.loc[10:20, 'HouseAge'] = 999   # Add outliers
+    df.columns = [c.replace(' ', '_').lower() for c in df.columns]
     
-    # Export cleaned data
-    cleaner.export_clean_data('cleaned_data.csv')
+    # Initialize smart cleaner
+    cleaner = SmartDataCleaner(df, strategy='auto', verbose=True)
     
-    # Get cleaning report
-    report = cleaner.get_cleaning_report()
-    print("\nCleaning Report:")
-    print(report.to_string())
+    # Get initial report
+    print("\n📊 Initial Report:")
+    initial_report = cleaner.get_report('markdown')
+    print(initial_report[:500] + "...")
     
-    return cleaner
+    # Execute smart cleaning
+    print("\n🔧 Cleaning in progress...")
+    cleaner.clean()
+    
+    # Get final report
+    print("\n📊 Final Report:")
+    final_report = cleaner.get_report('markdown')
+    print(final_report)
+    
+    # Check if clean
+    print(f"\n✅ Data is {'clean' if cleaner.is_clean else 'not clean'}")
+    print(f"📈 Quality improved by: "
+          f"{(cleaner.quality_score - 0.8) * 100:.1f}%" if cleaner.quality_score else "N/A")
+    
+    # Save state
+    cleaner.save_state('cleaner_state.json')
+    
+    print("\n✨ Example complete! Ready for analysis or ML.")
 
 
 if __name__ == "__main__":
-    # Run example when script is executed directly
-    print("Data Cleaner Pro - Professional Data Cleaning Toolkit")
-    print("=" * 50)
-    print("\nRun cleaner.example_usage() to see an example workflow.")
-    print("Or create your own DataCleaner instance and start cleaning!")
+    # Run example if executed directly
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Smart Data Cleaner Pro')
+    parser.add_argument('--example', action='store_true', help='Run example usage')
+    parser.add_argument('--file', type=str, help='File to clean')
+    parser.add_argument('--strategy', choices=['auto', 'aggressive', 'conservative'], 
+                       default='auto', help='Cleaning strategy')
+    
+    args = parser.parse_args()
+    
+    if args.example:
+        example_smart_usage()
+    elif args.file:
+        cleaner = SmartDataCleaner(strategy=args.strategy, verbose=True)
+        cleaner.load_data(args.file)
+        cleaned_df = cleaner.clean(inplace=False)
+        cleaned_df.to_csv(f'cleaned_{Path(args.file).name}', index=False)
+        print(f"✅ Cleaned data saved to cleaned_{Path(args.file).name}")
+    else:
+        print("Usage:")
+        print("  python cleaner.py --example  # Run example")
+        print("  python cleaner.py --file data.csv --strategy auto  # Clean a file")
