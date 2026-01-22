@@ -1,7 +1,7 @@
 """
 Data Cleaner Pro - Professional data cleaning toolkit for everyday use
 Author: nutmegdev96
-GitHub: https://github.com/nutmegdev96/data-cleaner-pro
+GitHub: https://github.com/nutmegdev96/Data-Cleaner-PRO-v1.1
 """
 
 import pandas as pd
